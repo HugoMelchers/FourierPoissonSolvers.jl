@@ -1,0 +1,10 @@
+name = "SpectralPoissonSolvers"
+uuid = "3b250847-5a16-44c9-b45e-a713cb7d6856"
+authors = ["Hugo Melchers <hugomelchers@outlook.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1.2"
+
+[deps]
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
