@@ -2,56 +2,88 @@ module SpectralPoissonSolvers
 
 import FFTW: r2r!, fftfreq, DHT, REDFT00, REDFT01, REDFT10, REDFT11, RODFT00, RODFT01, RODFT10, RODFT11
 
+frequency_response(ω) = -2 + 2cos(ω)
+
+"""
+    zeromean!(arr)
+
+Add a constant to `arr` so that the average of its entries becomes zero. This is necessary when testing solutions of
+Poisson equations with only Neumann or periodic boundary conditions, since then the solution is only defined up to
+addition/subtraction by a constant, so to test the accuracy of a method both the exact and approximate solutions must be
+shifted first.
+"""
+function zeromean!(arr)
+    arr .-= sum(arr) / length(arr)
+end
+
 # A struct so that creating an axis that is offset can be done by adding an `Offset()` argument, instead of a less clear `true`
 struct Offset end
 
 # Periodic boundary conditions, which require no additional data
 struct Periodic end
 
-abstract type AbstractBoundaryCondition end
-
 # Dirichlet boundary conditions with the given values. Can be either nothing, a constant, or an array
-struct Dirichlet{V}
-    values::V
+struct Dirichlet
+    values
 end
 
 # Neumann boundary conditions with the given values. Can be either nothing, a constant, or an array.
 # Note that right now, the values are interpreted as partial derivatives, rather than normal derivatives.
-# This means that compared to the normal derivative formulation, the signs are swapped for the right boundary.
-struct Neumann{V}
-    values::V
+# This means that compared to the normal derivative formulation, the signs are swapped one of the two boundaries.
+struct Neumann
+    values
 end
 
 struct Axis
-    length
+    x1
+    x2
     size
-    pitch
-    is_offset
+    pitch  # maybe call this something like 'step'
+    offset # should be renamed to 'kind' or something
     bc
 end
 
-function axis(length, size, bc, offset=nothing)
+function axis(x1, x2, size, bc, offset=nothing)
+    length = x2 - x1
     is_offset = offset isa Offset
     pitch = if bc isa Periodic || is_offset
         length / size
     else
-        logical_size = size + 1
+        logical_size = size - 1
         if bc[1] isa Dirichlet
-            logical_size -= 1
+            logical_size += 1
         end
         if bc[2] isa Dirichlet
-            logical_size -= 1
+            logical_size += 1
         end
         length / logical_size
     end
     
     Axis(
-        length,
+        x1,
+        x2,
         size,
         pitch,
-        is_offset,
+        offset,
         bc
     )
+end
+
+function xvalues(axis::Axis)
+    if axis.offset isa Offset || axis.bc isa Periodic
+        range(axis.x1, axis.x2, length=2axis.size + 1)[2:2:end]
+    else
+        bc = axis.bc
+        if bc isa Tuple{Dirichlet, Dirichlet}
+            range(axis.x1, axis.x2, length=axis.size+2)[2:end-1]
+        elseif bc isa Tuple{Dirichlet, Neumann}
+            range(axis.x1, axis.x2, length=axis.size+1)[2:end]
+        elseif bc isa Tuple{Neumann, Dirichlet}
+            range(axis.x1, axis.x2, length=axis.size+1)[1:end-1]
+        elseif bc isa Tuple{Neumann, Neumann}
+            range(axis.x1, axis.x2, length=axis.size)
+        end
+    end
 end
 
 struct PoissonProblemCFG
@@ -63,53 +95,32 @@ struct PoissonProblem
     rhs
 end
 
-function update_bc_left!(rhs, i, bc, pitch, is_offset)
-    D = ndims(rhs)
-    c1 = ntuple(_ -> Colon(), i-1)
-    c2 = ntuple(_ -> Colon(), D-i)
-    if bc isa Dirichlet
-        if bc.values !== nothing
-            mult = ifelse(is_offset, 2.0, 1.0)
-            rhs[c1..., 1:1, c2...] .-= bc.values .* (mult / pitch^2)
-        end
-    else # bc isa Neumann
-        if bc.values !== nothing
-            mult = ifelse(is_offset, 1.0, 2.0)
-            rhs[c1..., 1:1, c2...] .+= bc.values .* (mult / pitch)
-        end
-    end
-end
+"""
+    update_bcs!(rhs, i, axis)
 
-function update_bc_right!(rhs, i, bc, pitch, is_offset)
-    D = ndims(rhs)
-    c1 = ntuple(_ -> Colon(), i-1)
-    c2 = ntuple(_ -> Colon(), D-i)
-    if bc isa Dirichlet
-        if bc.values !== nothing
-            mult = ifelse(is_offset, 2.0, 1.0)
-            rhs[c1..., end:end, c2...] .-= bc.values .* (mult / pitch^2)
-        end
-    else # bc isa Neumann
-        if bc.values !== nothing
-            mult = ifelse(is_offset, 1.0, 2.0)
-            rhs[c1..., end:end, c2...] .-= bc.values .* (mult / pitch)
-        end
-    end
-end
-
-function update_bcs!(rhs, i, axis)
+Process all boundary conditions by adding their respective terms to the right-hand side of the linear system of equations.
+"""
+function update_bcs!(correction, rhs, i, axis)
     # update the array by adding terms based on the boundary conditions
     # for each axis, this possibly means adding some term to the rhs, based on the type of boundary condition and whether the grid is offset
     if axis.bc isa Periodic
         return
     end
-    update_bc_left!(rhs, i, axis.bc[1], axis.pitch, axis.is_offset)
-    update_bc_right!(rhs, i, axis.bc[2], axis.pitch, axis.is_offset)
+    D = ndims(correction)
+    c1 = ntuple(_ -> Colon(), i-1)
+    c2 = ntuple(_ -> Colon(), D-i)
+    sz = size(correction, i)
+    view_left = view(correction, c1..., 1:1, c2...)
+    view_right = view(correction, c1..., sz:sz, c2...)
+    view_rhs_left = view(rhs, c1..., 1:1, c2...)
+    view_rhs_right = view(rhs, c1..., sz:sz, c2...)
+    update_left_boundary!(view_left, view_rhs_left, axis.pitch, axis.bc[1], axis.offset)
+    update_right_boundary!(view_right, view_rhs_right, axis.pitch, axis.bc[2], axis.offset)
 end
 
 function do_transform!(rhs, i, axis)
     # do the correct transform over the correct dimension
-    kind = which_fft(axis.bc, axis.is_offset)
+    kind = fwd_transform(axis.bc, axis.offset)
     r2r!(rhs, kind, i)
 end
 
@@ -118,15 +129,13 @@ function scale_coefficients!(rhs, axes, is_singular)
     scale = zeros(eltype(rhs), size(rhs))
     for (i, axis) in enumerate(axes)
         n = size(rhs, i)
-        t = which_fft(axis.bc, axis.is_offset)
-        ls = evs(t, n) ./ axis.pitch^2
+        ls = frequency_response.(frequencies(axis.bc, axis.offset, n)) ./ axis.pitch^2
         scale .+= reshape(ls, ntuple(_ -> 1, i-1)..., :)
     end
     rhs ./= scale
     for (i, axis) in enumerate(axes)
-        t = which_fft(axis.bc, axis.is_offset)
         n = size(rhs, i)
-        rhs ./= scaling_factor(t, n)
+        rhs ./= scalingfactor(axis.bc, axis.offset, n)
     end
     if is_singular
         rhs[1] = 0.0
@@ -135,22 +144,30 @@ end
 
 function do_inverse_transform!(rhs, i, axis)
     # transform the coefficients back into a spatial thing
-    fwd_kind = which_fft(axis.bc, axis.is_offset)
-    kind = inverse_transform_of(fwd_kind)
+    kind = bwd_transform(axis.bc, axis.offset)
     r2r!(rhs, kind, i)
 end
 
 function solve(prob)
     rhs = Array(prob.rhs)
+    correction = zeros(eltype(rhs), size(rhs))
     for (i, axis) in enumerate(prob.axes)
-        update_bcs!(rhs, i, axis)
+        update_bcs!(correction, rhs, i, axis)
     end
+    rhs .+= correction
     for (i, axis) in enumerate(prob.axes)
         do_transform!(rhs, i, axis)
     end
     scale_coefficients!(rhs, prob.axes, is_singular(prob))
     for (i, axis) in enumerate(prob.axes)
         do_inverse_transform!(rhs, i, axis)
+    end
+    if is_singular(prob)
+        # If the problem is singular, then setting the coefficient corresponding to the constant term does not ensure
+        # that the resulting `rhs` has zero average value, since for the RODFT00 transform (i.e. double Neumann bc's on
+        # a normal grid) some of the higher frequencies do not sum to zero. So to ensure that the result sums to zero,
+        # we shift the solution manually after doing the inverse transform.
+        zeromean!(rhs)
     end
     rhs
 end
@@ -168,7 +185,10 @@ function is_singular(prob)
     true
 end
 
-include("transforms.jl")
+include("periodic.jl")
+include("dirichlet.jl")
+include("neumann.jl")
+include("mixed.jl")
 
 export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, axis, is_singular
 
