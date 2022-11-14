@@ -9,11 +9,11 @@ bwd_transform(::Tuple{Dirichlet, Dirichlet}, ::Nothing) = RODFT00
 scalingfactor(::Tuple{Dirichlet, Dirichlet}, ::Nothing, n) = 2n + 2
 frequencies(::Tuple{Dirichlet, Dirichlet}, ::Nothing, n) = LinRange(0, π, n+2)[2:end-1]
 
-function update_left_boundary!(correction, _, pitch, bc::Dirichlet, ::Nothing)
+function update_left_boundary!(correction, pitch, bc::Dirichlet, ::Nothing)
     correction .-= bc.values .* (1 / pitch^2)
 end
 
-function update_right_boundary!(correction, _, pitch, bc::Dirichlet, ::Nothing)
+function update_right_boundary!(correction, pitch, bc::Dirichlet, ::Nothing)
     correction .-= bc.values .* (1 / pitch^2)
 end
 
@@ -43,14 +43,17 @@ So, for better accuracy we should subtract ¼u"(h/2) from the right-hand side. N
 order accurate regardless of whether this correction is added. However, without the correction the solution will not be
 exact for problems where the true solution is a polynomial of degree 2, and will generally have an error that is greater
 by some constant factor that depends on the problem.
+
+Unfortunately, this reasoning only works for 1D problems. In two or more dimensions, the right hand side is not just the
+second derivative of `u` in the desired axis, but the sum of second derivatives over all axes. That meanst that we can't
+simply add such a correction term to the right-hand side as it requires knowing the individual second derivatives of
+`u`, instead of their sum.
 =#
 
-function update_left_boundary!(correction, rhs, pitch, bc::Dirichlet, ::Offset)
+function update_left_boundary!(correction, pitch, bc::Dirichlet, ::Offset)
     correction .-= bc.values .* (2 / pitch^2)
-    correction .-= rhs / 4
 end
 
-function update_right_boundary!(correction, rhs, pitch, bc::Dirichlet, ::Offset)
+function update_right_boundary!(correction, pitch, bc::Dirichlet, ::Offset)
     correction .-= bc.values .* (2 / pitch^2)
-    correction .-= rhs / 4
 end

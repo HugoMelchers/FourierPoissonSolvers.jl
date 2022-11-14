@@ -112,10 +112,8 @@ function update_bcs!(correction, rhs, i, axis)
     sz = size(correction, i)
     view_left = view(correction, c1..., 1:1, c2...)
     view_right = view(correction, c1..., sz:sz, c2...)
-    view_rhs_left = view(rhs, c1..., 1:1, c2...)
-    view_rhs_right = view(rhs, c1..., sz:sz, c2...)
-    update_left_boundary!(view_left, view_rhs_left, axis.pitch, axis.bc[1], axis.offset)
-    update_right_boundary!(view_right, view_rhs_right, axis.pitch, axis.bc[2], axis.offset)
+    update_left_boundary!(view_left, axis.pitch, axis.bc[1], axis.offset)
+    update_right_boundary!(view_right, axis.pitch, axis.bc[2], axis.offset)
 end
 
 function do_transform!(rhs, i, axis)
@@ -185,11 +183,34 @@ function is_singular(prob)
     true
 end
 
+"""
+    exact_for_quadratic_solutions(prob)
+
+Returns true if the solution to this problem is correct up to numerical precision (instead of just 2nd-order accurate)
+when the right hand side is constant, meaning that the solution is given by a polynomial of degree 2 or lower. In
+general, second-order accurate methods should also be able to solve such problems exactly, but this is not always the
+case here due to a technicality. Specifically, if any of the axes use an offset grid and Dirichlet boundary conditions
+on one or both sides, then the solution will still be second-order accurate but not exact for solutions that are given
+by a quadratic function. This is due to the fact that in such cases, the correct discretisation does not exactly line up
+with a Discrete Sine Transform (for more info, see the block comment in `dirichlet.jl`).
+"""
+function exact_for_quadratic_solutions(prob)
+    for axis in prob.axes
+        bc = axis.bc
+        if bc isa Periodic || axis.offset isa Nothing
+            continue
+        elseif bc[1] isa Dirichlet || bc[2] isa Dirichlet
+            return false
+        end
+    end
+    true
+end
+
 include("periodic.jl")
 include("dirichlet.jl")
 include("neumann.jl")
 include("mixed.jl")
 
-export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, axis, is_singular
+export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, axis, is_singular, exact_for_quadratic_solutions
 
 end

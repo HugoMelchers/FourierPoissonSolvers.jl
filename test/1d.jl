@@ -85,6 +85,10 @@ end
         if is_singular(prob)
             zeromean!(sol_exact)
         end
-        @test maximum(abs, sol .- sol_exact) < 1e-15
+        if !exact_for_quadratic_solutions(prob)
+            @test maximum(abs, sol .- sol_exact) > 1e-3
+        else
+            @test maximum(abs, sol .- sol_exact) < 1e-15
+        end
     end
 end
