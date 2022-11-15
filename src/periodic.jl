@@ -11,10 +11,10 @@ by varying one of the input parameters. Furthermore, FFTW lets us transform a mu
 transforms over different axes, which is not possible if one of the transforms we want to do is an FFT.
 =#
 
-fwd_transform(::Periodic, _) = DHT
-bwd_transform(::Periodic, _) = DHT
+fwd_transform(::Periodic, ::Periodic, _) = DHT
+bwd_transform(::Periodic, ::Periodic, _) = DHT
 
-scalingfactor(::Periodic, _, n) = n
+scalingfactor(::Periodic, ::Periodic, _, n) = n
 
 # TODO: maybe just use the more accurate eigenvalues for periodic boundary conditions
-frequencies(::Periodic, _, n) = 2pi .* fftfreq(n)
+frequencies(::Periodic, ::Periodic, _, n) = 2pi .* fftfreq(n)

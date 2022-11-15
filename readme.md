@@ -42,59 +42,25 @@ and grid type, of which there are 9 combinations:
     useful for i.e. advection-diffusion equations after a change of variables.
   - It is definitely possible to extend to the Helmholtz equation, although I'm not sure how useful that is
   - It should be possible to use the 2nd order accurate methods to create 4th-order iterative methods by matrix splitting
-- Improve performance
-  - In 1D, see if just using the Tri-Diagonal Matrix Algorithm works as well (in terms of both performance and accuracy/stability)
-    - Actually, it's always possible to only transform over `D-1` dimensions, and use TDMA for the remaining one
-  - Make a pre-planned version
-    - From plan, the solve would be
-      - Set boundary conditions
-      - Set rhs
-      - Solve in-place
-  - Combine transforms over different axes into one
-    - `FFTW.r2r!` allows setting a different transform type along each dimension, so I can collect the types into a
-      tuple and then do a single transform. This will only help in 2 or more dimensions, though.
-    - Compare performance of in-place vs out-of-place DCTs/DSTs
-  - Make code strongly typed
-    - This is a bit difficult to figure out, as it requires some arithmetic with type variables which isn't possible
-    - An alternative is to require that the arrays are `N`-dimensional instead of `N-1`, with a singleton dimension at the end (or at the index of the axis)
-      - I should be able to do this just in the constructors
-    - Make specialised versions of the boundary condition structs if the boundary values are constant, or constantly zero
-  - Compare performance to multi-grid methods
+- Make code strongly typed
+  - This is a bit difficult to figure out, as it requires some arithmetic with type variables which isn't possible
+  - An alternative is to require that the arrays are `N`-dimensional instead of `N-1`, with a singleton dimension at the end (or at the index of the axis)
+    - I should be able to do this just in the constructors
+  - Make specialised versions of the boundary condition structs if the boundary values are constant, or constantly zero
+- Compare performance to multi-grid methods
 - Organise
   - Project isn't huge, but still good to split up into different files, with lots of documentation
   - Use multiple dispatch to handle the different boundary conditions and axis types more easily
 - Polish
   - Figure out a clean API for defining axes, problems and so on
   - Find a neat way to be able to access/modify the right-hand side and boundary values after creating a problem
-    - Maybe define a `PoissonOperator` (or `LaplaceOperator`?) that contains boundary conditions etc, and call with `ldiv(op, rhs)`
   - Right now, to create a problem I must create axes with boundary conditions, but to create the boundary conditions
     I must know where to sample my function which depends on the axes. This is especially annoying when testing the
     implementations with non-offset grids, since then the x values depend on the grid. So it would be more convenient
     to first create an object representing the range of values, and then a separate thing that includes the boundary
     conditions.
+    - Maybe only define the boundary condition types in the `PoissonProblem`, and let their values be specified in the second argument to `ldiv`
+  - Implement `display` and `show` for `PoissonProblem` to just give an overview instead of printing everything including coefficients and FFTW plans
 - Make public, perhaps publish on JuliaHub?
   - Requires a better name, since these methods do not have spectral accuracy
   - Would definitely require adding proper documentation
-
-## How to handle boundary conditions
-
-So for a single axis, we have either a single Periodic, or a pair of Dirichlet/Neumann, which can both have associated
-data or not (in case of homogeneous boundary conditions I don't want the overhead of storing an array of zeros).
-
-Alternatively: plan a solution and then call it with many right-hand sides?
-
-- `prob = PoissonProblem(...)`
-  - `prob` should now have modifiable arrays for the right-hand side and boundary condition values
-
-Implementation: for now, focus on the planless implementation, then write separate planned ones.
-
-Planless implementation:
-
-- For now, I can just do compute everything on the fly, and compute individual transforms etc.
-
-Planned implementation:
-
-- A function that, given a boundary condition (pair) and a length, returns:
-  - The forward and inverse transforms to use
-  - The eigenvalues to scale by, including the scaling factor of the transform
-- Then I can use the transform types to plan the forward and backward transforms and execute them with `mul!(rhs, plan, rhs)`

@@ -4,10 +4,10 @@ For an axis with Dirichlet boundary conditions on both sides, we use a Discrete 
 
 # Dirichlet boundary conditions on a normal grid
 
-fwd_transform(::Tuple{Dirichlet, Dirichlet}, ::Nothing) = RODFT00
-bwd_transform(::Tuple{Dirichlet, Dirichlet}, ::Nothing) = RODFT00
-scalingfactor(::Tuple{Dirichlet, Dirichlet}, ::Nothing, n) = 2n + 2
-frequencies(::Tuple{Dirichlet, Dirichlet}, ::Nothing, n) = LinRange(0, π, n+2)[2:end-1]
+fwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
+bwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
+scalingfactor(::Dirichlet, ::Dirichlet, ::Nothing, n) = 2n + 2
+frequencies(::Dirichlet, ::Dirichlet, ::Nothing, n) = LinRange(0, π, n+2)[2:end-1]
 
 function update_left_boundary!(correction, pitch, bc::Dirichlet, ::Nothing)
     correction .-= bc.values .* (1 / pitch^2)
@@ -19,10 +19,10 @@ end
 
 # Dirichlet boundary conditions on an offset grid
 
-fwd_transform(::Tuple{Dirichlet, Dirichlet}, ::Offset) = RODFT10
-bwd_transform(::Tuple{Dirichlet, Dirichlet}, ::Offset) = RODFT01
-scalingfactor(::Tuple{Dirichlet, Dirichlet}, ::Offset, n) = 2n
-frequencies(::Tuple{Dirichlet, Dirichlet}, ::Offset, n) = LinRange(0, π, n+1)[2:end]
+fwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT10
+bwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT01
+scalingfactor(::Dirichlet, ::Dirichlet, ::Offset, n) = 2n
+frequencies(::Dirichlet, ::Dirichlet, ::Offset, n) = LinRange(0, π, n+1)[2:end]
 
 #=
 Note that the `update_*_boundary!` methods for Dirichlet boundary conditions with offset grids are the only such methods

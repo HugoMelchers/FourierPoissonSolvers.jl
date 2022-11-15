@@ -15,12 +15,15 @@
             bc2x = Neumann(fx.([ 1], xs'))
             bc1y = Neumann(fy.(xs, [-1]'))
             bc2y = Neumann(fy.(xs, [ 1]'))
-            axis1 = axis(-1, 1, n, (bc1x, bc2x), Offset())
-            axis2 = axis(-1, 1, n, (bc1y, bc2y), Offset())
-            prob = PoissonProblem((axis1, axis2), rhs)
+            prob = PoissonProblem(
+                (n,n);
+                boundaries = (Boundary(bc1x, bc2x), Boundary(bc1y, bc2y)),
+                lims = ((-1.0,1.0),(-1.0,1.0)),
+                grid = (Offset(), Offset())
+            )
             u1 = f.(xs, xs')
             zeromean!(u1)
-            u2 = solve(prob)
+            u2 = prob \ rhs
             err = maximum(abs, u1 - u2)
             push!(errs, err)
         end
@@ -54,18 +57,21 @@ end
         (nothing, Offset()),
         (nothing, Offset()),
     )
-        bcs_x = (bc_x1, bc_x2)
-        bcs_y = (bc_y1, bc_y2)
-        axis_x = axis(x1, x2, nx, bcs_x, offset_x)
-        axis_y = axis(y1, y2, ny, bcs_y, offset_y)
-        xs = xvalues(axis_x)
-        ys = xvalues(axis_y)'
-        bc_x1.values .= bc_x1 isa Dirichlet ? f.(x1, ys) : fx.(x1, ys)
-        bc_x2.values .= bc_x2 isa Dirichlet ? f.(x2, ys) : fx.(x2, ys)
-        bc_y1.values .= bc_y1 isa Dirichlet ? f.(xs, y1) : fy.(xs, y1)
-        bc_y2.values .= bc_y2 isa Dirichlet ? f.(xs, y2) : fy.(xs, y2)
-        prob = PoissonProblem((axis_x, axis_y), fxx.(xs, ys) .+ fyy.(xs, ys))
-        sol_approx = solve(prob)
+        bcs_x = Boundary(bc_x1, bc_x2)
+        bcs_y = Boundary(bc_y1, bc_y2)
+        prob = PoissonProblem(
+            (nx,ny);
+            boundaries = (bcs_x, bcs_y),
+            grid = (offset_x, offset_y),
+            lims = ((x1, x2),(y1,y2))
+        )
+        xs = prob.nodes[1]
+        ys = prob.nodes[2]'
+        prob.boundaries[1].left.values .= bc_x1 isa Dirichlet ? f.(x1, ys) : fx.(x1, ys)
+        prob.boundaries[1].right.values .= bc_x2 isa Dirichlet ? f.(x2, ys) : fx.(x2, ys)
+        prob.boundaries[2].left.values .= bc_y1 isa Dirichlet ? f.(xs, y1) : fy.(xs, y1)
+        prob.boundaries[2].right.values .= bc_y2 isa Dirichlet ? f.(xs, y2) : fy.(xs, y2)
+        sol_approx = prob \ (fxx.(xs, ys) .+ fyy.(xs, ys))
         sol_exact = f.(xs, ys)
         if is_singular(prob)
             zeromean!(sol_exact)

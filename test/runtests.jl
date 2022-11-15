@@ -2,7 +2,7 @@ using SpectralPoissonSolvers
 using Test
 using ForwardDiff
 
-using SpectralPoissonSolvers:zeromean!, xvalues
+using SpectralPoissonSolvers:zeromean!
 
 include("utils.jl")
 

@@ -1,20 +1,10 @@
 module SpectralPoissonSolvers
 
-import FFTW: r2r!, fftfreq, DHT, REDFT00, REDFT01, REDFT10, REDFT11, RODFT00, RODFT01, RODFT10, RODFT11
+import FFTW: r2r!, plan_r2r!, fftfreq, DHT, REDFT00, REDFT01, REDFT10, REDFT11, RODFT00, RODFT01, RODFT10, RODFT11
+import Base:\
+import LinearAlgebra:mul!
 
 frequency_response(ω) = -2 + 2cos(ω)
-
-"""
-    zeromean!(arr)
-
-Add a constant to `arr` so that the average of its entries becomes zero. This is necessary when testing solutions of
-Poisson equations with only Neumann or periodic boundary conditions, since then the solution is only defined up to
-addition/subtraction by a constant, so to test the accuracy of a method both the exact and approximate solutions must be
-shifted first.
-"""
-function zeromean!(arr)
-    arr .-= sum(arr) / length(arr)
-end
 
 # A struct so that creating an axis that is offset can be done by adding an `Offset()` argument, instead of a less clear `true`
 struct Offset end
@@ -23,194 +13,147 @@ struct Offset end
 struct Periodic end
 
 # Dirichlet boundary conditions with the given values. Can be either nothing, a constant, or an array
-struct Dirichlet
+mutable struct Dirichlet
     values
 end
 
 # Neumann boundary conditions with the given values. Can be either nothing, a constant, or an array.
 # Note that right now, the values are interpreted as partial derivatives, rather than normal derivatives.
 # This means that compared to the normal derivative formulation, the signs are swapped one of the two boundaries.
-struct Neumann
+mutable struct Neumann
     values
 end
 
-struct Axis
-    x1
-    x2
-    size
-    pitch  # maybe call this something like 'step'
-    offset # should be renamed to 'kind' or something
-    bc
+struct Boundary
+    left
+    right
 end
 
-function axis(x1, x2, size, bc, offset=nothing)
-    length = x2 - x1
-    is_offset = offset isa Offset
-    pitch = if bc isa Periodic || is_offset
-        length / size
-    else
-        logical_size = size - 1
-        if bc[1] isa Dirichlet
-            logical_size += 1
-        end
-        if bc[2] isa Dirichlet
-            logical_size += 1
-        end
-        length / logical_size
+node_range(_, _, ::Offset, n) = (2n+1, 2:2:(2n))
+node_range(::Periodic, ::Periodic, ::Nothing, n) = (2n+1, 2:2:(2n))
+node_range(left::Union{Dirichlet, Neumann}, right::Union{Dirichlet, Neumann}, ::Nothing, n) = begin
+    logical_size = n
+    skip_left = 0
+    skip_right = 0
+    if left isa Dirichlet
+        # Dirichlet on left boundary: exclude that point
+        logical_size += 1
+        skip_left = 1
     end
-    
-    Axis(
-        x1,
-        x2,
-        size,
-        pitch,
-        offset,
-        bc
-    )
-end
-
-function xvalues(axis::Axis)
-    if axis.offset isa Offset || axis.bc isa Periodic
-        range(axis.x1, axis.x2, length=2axis.size + 1)[2:2:end]
-    else
-        bc = axis.bc
-        if bc isa Tuple{Dirichlet, Dirichlet}
-            range(axis.x1, axis.x2, length=axis.size+2)[2:end-1]
-        elseif bc isa Tuple{Dirichlet, Neumann}
-            range(axis.x1, axis.x2, length=axis.size+1)[2:end]
-        elseif bc isa Tuple{Neumann, Dirichlet}
-            range(axis.x1, axis.x2, length=axis.size+1)[1:end-1]
-        elseif bc isa Tuple{Neumann, Neumann}
-            range(axis.x1, axis.x2, length=axis.size)
-        end
+    if right isa Dirichlet
+        logical_size += 1
+        skip_right = 1
     end
+    range = (1 + skip_left):(logical_size - skip_right)
+    (logical_size, range)
 end
-
-struct PoissonProblemCFG
-    axes
+function nodes(left, right, grid, n, x1, x2)
+    logical_size, _range = node_range(left, right, grid, n)
+    range(x1, x2, length=logical_size)[_range]
+end
+function step(left, right, grid, n, x1, x2)
+    (logical_size, range) = node_range(left, right, grid, n)
+    stride = if range isa UnitRange
+        1
+    else
+        range.step
+    end
+    stride * (x2 - x1) / (logical_size - 1)
 end
 
 struct PoissonProblem
-    axes
-    rhs
+    size
+    step
+    boundaries
+    grid
+    lims
+    nodes
+    coefficients
+    fwd_plan
+    bwd_plan
 end
 
 """
-    update_bcs!(rhs, i, axis)
-
-Process all boundary conditions by adding their respective terms to the right-hand side of the linear system of equations.
+    PoissonProblem(size; boundaries, lims, grid)
 """
-function update_bcs!(correction, rhs, i, axis)
+function PoissonProblem(size; boundaries, lims, grid)
+    _nodes = ntuple(
+        i -> nodes(boundaries[i].left, boundaries[i].right, grid[i], size[i], lims[i][1], lims[i][2]),
+        length(size)
+    )
+    _step = ntuple(
+        i -> step(boundaries[i].left, boundaries[i].right, grid[i], size[i], lims[i][1], lims[i][2]),
+        length(size)
+    )
+    coefficients = ntuple(
+        i -> frequency_response.(frequencies(boundaries[i].left, boundaries[i].right, grid[i], size[i])) ./ _step[i]^2,
+        length(size)
+    )
+    
+    fwd_plan = plan_fwd(size, boundaries, grid)
+    bwd_plan = plan_bwd(size, boundaries, grid)
+    
+    PoissonProblem(
+        size, _step, boundaries, grid, lims, _nodes, coefficients, fwd_plan, bwd_plan
+    )
+end
+
+function plan_fwd(size, boundaries, grid)
+    kinds = ntuple(
+        i -> fwd_transform(boundaries[i].left, boundaries[i].right, grid[i]),
+        length(size)
+    )
+    plan_r2r!(zeros(size...), kinds)
+end
+
+function plan_bwd(size, boundaries, grid)
+    kinds = ntuple(
+        i -> bwd_transform(boundaries[i].left, boundaries[i].right, grid[i]),
+        length(size)
+    )
+    plan_r2r!(zeros(size...), kinds)
+end
+
+function update_bcs!(rhs, i, step, bc, grid)
     # update the array by adding terms based on the boundary conditions
     # for each axis, this possibly means adding some term to the rhs, based on the type of boundary condition and whether the grid is offset
-    if axis.bc isa Periodic
+    if bc.left isa Periodic
         return
     end
-    D = ndims(correction)
+    D = ndims(rhs)
     c1 = ntuple(_ -> Colon(), i-1)
     c2 = ntuple(_ -> Colon(), D-i)
-    sz = size(correction, i)
-    view_left = view(correction, c1..., 1:1, c2...)
-    view_right = view(correction, c1..., sz:sz, c2...)
-    update_left_boundary!(view_left, axis.pitch, axis.bc[1], axis.offset)
-    update_right_boundary!(view_right, axis.pitch, axis.bc[2], axis.offset)
+    sz = size(rhs, i)
+    view_left = view(rhs, c1..., 1:1, c2...)
+    view_right = view(rhs, c1..., sz:sz, c2...)
+    bc.left.values !== nothing && update_left_boundary!(view_left, step, bc.left, grid)
+    bc.right.values !== nothing && update_right_boundary!(view_right, step, bc.right, grid)
 end
 
-function do_transform!(rhs, i, axis)
-    # do the correct transform over the correct dimension
-    kind = fwd_transform(axis.bc, axis.offset)
-    r2r!(rhs, kind, i)
-end
-
-function scale_coefficients!(rhs, axes, is_singular)
+function scale_coefficients!(rhs, prob::PoissonProblem)
     # scale the array, which is now coefficients of the transform, by the inverse eigenvalue and scaling factor of the transform
     scale = zeros(eltype(rhs), size(rhs))
-    for (i, axis) in enumerate(axes)
-        n = size(rhs, i)
-        ls = frequency_response.(frequencies(axis.bc, axis.offset, n)) ./ axis.pitch^2
+    for i in 1:length(prob.size)
+        ls = prob.coefficients[i]
         scale .+= reshape(ls, ntuple(_ -> 1, i-1)..., :)
     end
     rhs ./= scale
-    for (i, axis) in enumerate(axes)
+    for i in 1:length(prob.size)
         n = size(rhs, i)
-        rhs ./= scalingfactor(axis.bc, axis.offset, n)
+        rhs ./= scalingfactor(prob.boundaries[i].left, prob.boundaries[i].right, prob.grid[i], n)
     end
-    if is_singular
+    if is_singular(prob)
         rhs[1] = 0.0
     end
 end
 
-function do_inverse_transform!(rhs, i, axis)
-    # transform the coefficients back into a spatial thing
-    kind = bwd_transform(axis.bc, axis.offset)
-    r2r!(rhs, kind, i)
-end
-
-function solve(prob)
-    rhs = Array(prob.rhs)
-    correction = zeros(eltype(rhs), size(rhs))
-    for (i, axis) in enumerate(prob.axes)
-        update_bcs!(correction, rhs, i, axis)
-    end
-    rhs .+= correction
-    for (i, axis) in enumerate(prob.axes)
-        do_transform!(rhs, i, axis)
-    end
-    scale_coefficients!(rhs, prob.axes, is_singular(prob))
-    for (i, axis) in enumerate(prob.axes)
-        do_inverse_transform!(rhs, i, axis)
-    end
-    if is_singular(prob)
-        # If the problem is singular, then setting the coefficient corresponding to the constant term does not ensure
-        # that the resulting `rhs` has zero average value, since for the RODFT00 transform (i.e. double Neumann bc's on
-        # a normal grid) some of the higher frequencies do not sum to zero. So to ensure that the result sums to zero,
-        # we shift the solution manually after doing the inverse transform.
-        zeromean!(rhs)
-    end
-    rhs
-end
-
-function is_singular(prob)
-    for axis in prob.axes
-        bc = axis.bc
-        if bc isa Periodic
-            continue
-        end
-        if bc[1] isa Dirichlet || bc[2] isa Dirichlet
-            return false
-        end
-    end
-    true
-end
-
-"""
-    exact_for_quadratic_solutions(prob)
-
-Returns true if the solution to this problem is correct up to numerical precision (instead of just 2nd-order accurate)
-when the right hand side is constant, meaning that the solution is given by a polynomial of degree 2 or lower. In
-general, second-order accurate methods should also be able to solve such problems exactly, but this is not always the
-case here due to a technicality. Specifically, if any of the axes use an offset grid and Dirichlet boundary conditions
-on one or both sides, then the solution will still be second-order accurate but not exact for solutions that are given
-by a quadratic function. This is due to the fact that in such cases, the correct discretisation does not exactly line up
-with a Discrete Sine Transform (for more info, see the block comment in `dirichlet.jl`).
-"""
-function exact_for_quadratic_solutions(prob)
-    for axis in prob.axes
-        bc = axis.bc
-        if bc isa Periodic || axis.offset isa Nothing
-            continue
-        elseif bc[1] isa Dirichlet || bc[2] isa Dirichlet
-            return false
-        end
-    end
-    true
-end
-
+# allow solving as `u = prob \ f`
+include("api.jl")
 include("periodic.jl")
 include("dirichlet.jl")
 include("neumann.jl")
 include("mixed.jl")
 
-export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, axis, is_singular, exact_for_quadratic_solutions
+export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, is_singular, exact_for_quadratic_solutions, Boundary
 
 end
