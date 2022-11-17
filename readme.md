@@ -31,9 +31,9 @@ and grid type, of which there are 9 combinations:
 ## TODO
 
 - Test
-  - Test order of accuracy on 1D, 2D, 3D problems
-  - Also test that error is close to machine precision when the right-hand side is a polynomial of low degree
+  - Test order of accuracy on 1D, 2D(, 3D) problems
   - Can make more tests based on solutions, then computing their Laplacian with ForwardDiff
+  - Test API
 - Extend
   - Can I use multiple FFT backends? Right now only `FFTW.jl` is supported and the `AbstractFFTs.jl` interface does not
     include support for DSTs/DCTs, but I could in theory write them myself in a way that just falls back to an FFT on a
@@ -42,25 +42,19 @@ and grid type, of which there are 9 combinations:
     useful for i.e. advection-diffusion equations after a change of variables.
   - It is definitely possible to extend to the Helmholtz equation, although I'm not sure how useful that is
   - It should be possible to use the 2nd order accurate methods to create 4th-order iterative methods by matrix splitting
-- Make code strongly typed
-  - This is a bit difficult to figure out, as it requires some arithmetic with type variables which isn't possible
-  - An alternative is to require that the arrays are `N`-dimensional instead of `N-1`, with a singleton dimension at the end (or at the index of the axis)
-    - I should be able to do this just in the constructors
-  - Make specialised versions of the boundary condition structs if the boundary values are constant, or constantly zero
 - Compare performance to multi-grid methods
 - Organise
   - Project isn't huge, but still good to split up into different files, with lots of documentation
   - Use multiple dispatch to handle the different boundary conditions and axis types more easily
 - Polish
-  - Figure out a clean API for defining axes, problems and so on
-  - Find a neat way to be able to access/modify the right-hand side and boundary values after creating a problem
-  - Right now, to create a problem I must create axes with boundary conditions, but to create the boundary conditions
-    I must know where to sample my function which depends on the axes. This is especially annoying when testing the
-    implementations with non-offset grids, since then the x values depend on the grid. So it would be more convenient
-    to first create an object representing the range of values, and then a separate thing that includes the boundary
-    conditions.
-    - Maybe only define the boundary condition types in the `PoissonProblem`, and let their values be specified in the second argument to `ldiv`
   - Implement `display` and `show` for `PoissonProblem` to just give an overview instead of printing everything including coefficients and FFTW plans
+  - Add rigorous checks in constructors so that as many errors as possible (regarding array dimensions etc.) are caught immediately
+  - Make sure I only define public functions on my own types, i.e. no piracy
+  - Maybe don't artificially limit the periodic boundary condition case to 2nd order accuracy
+    - Doing this would require more specific under-relaxation parameter choices in the fourth-order algorithms, though
 - Make public, perhaps publish on JuliaHub?
   - Requires a better name, since these methods do not have spectral accuracy
+    - `PoissonSolvers.jl` is already taken, with `O(N log N)` methods but only for periodic boundary conditions
+    - Something like `PoissonEquations.jl`, `NlogNPoissonSolvers.jl`?
+    - I think `FourierPoissonSolvers.jl` is the way to go. Not too general, arguably a bit too specific but leaves room for a multigrid package that works faster
   - Would definitely require adding proper documentation

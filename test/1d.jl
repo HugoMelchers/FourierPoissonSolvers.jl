@@ -1,35 +1,34 @@
-function compare_solutions_1d(x1, x2, n, f, d2f, bc, offset=nothing)
-    if n isa AbstractVector
-        return [compare_solutions_1d(x1, x2, k, f, d2f, bc, offset) for k in n]
-    end
-    prob = PoissonProblem((n,); boundaries=(Boundary(bc[1], bc[2]),), lims=((x1, x2),), grid=(offset,))
-    xs = prob.nodes[1]
-    u1 = f.(xs)
-    u2 = prob \ d2f.(xs)
-    is_singular(prob) && zeromean!(u1)
-    maximum(abs, u1 .- u2)
+function solution_error_1d(prob, f, df, d2f)
+    _bcs = prob.boundaries
+    (xs,) = prob.nodes
+    (x1, x2) = prob.lims[1]
+    vals_x1 = _bcs[1][1] isa Dirichlet ? f(x1) : df(x1)
+    vals_x2 = _bcs[1][2] isa Dirichlet ? f(x2) : df(x2)
+    rhs = with_boundaries(d2f.(xs), (vals_x1, vals_x2))
+    sol_approx = prob \ rhs
+    sol_exact = f.(xs)
+    is_singular(prob) && zeromean!(sol_exact)
+    maximum(abs, sol_exact - sol_approx)
 end
 
-function test_order_of_accuracy_1d(f, d2f, x1, x2, ns, bc, offset)
+function compare_solutions_1d(x1, x2, n, f, df, d2f, bc, grid=nothing)
+    if n isa AbstractVector
+        return [compare_solutions_1d(x1, x2, k, f, df, d2f, bc, grid) for k in n]
+    end
+    prob = PoissonProblem((n,); boundaries=((bc[1], bc[2]),), lims=((x1, x2),), grid=(grid,))
+    solution_error_1d(prob, f, df, d2f)
+end
+
+function test_order_of_accuracy_1d(f, df, d2f, x1, x2, ns, bc, offset)
     errs = Float64[]
     for n in ns
-        # ax = axis(x1, x2, n, bc, offset)
-        # xs = SpectralPoissonSolvers.xvalues(ax)
-        # rhs = d2f.(xs)
-        # prob = PoissonProblem((ax,), rhs)
         prob = PoissonProblem(
             (n,);
-            boundaries = (Boundary(bc[1], bc[2]),),
+            boundaries = ((bc[1], bc[2]),),
             lims = ((x1, x2),),
             grid = (offset,)
         )
-        xs = prob.nodes[1]
-        u_exact = f.(xs)
-        u_approx = prob \ d2f.(xs)
-        if is_singular(prob)
-            zeromean!(u_exact)
-        end
-        err = maximum(abs, u_exact .- u_approx)
+        err = solution_error_1d(prob, f, df, d2f)
         push!(errs, err)
     end
     @test isapprox(order_of_accuracy(ns, errs), 2.0, atol=0.1)
@@ -38,12 +37,12 @@ end
 function test_order_of_accuracy_1d_all(f, x1, x2, ns)
     df(x) = ForwardDiff.derivative(f, x)
     d2f(x) = ForwardDiff.derivative(df, x)
-    bc_left_1 = Dirichlet(f(x1))
-    bc_left_2 = Neumann(df(x1))
-    bc_right_1 = Dirichlet(f(x2))
-    bc_right_2 = Neumann(df(x2))
+    bc_left_1 = Dirichlet()
+    bc_left_2 = Neumann()
+    bc_right_1 = Dirichlet()
+    bc_right_2 = Neumann()
     for bc_left in (bc_left_1, bc_left_2), bc_right in (bc_right_1, bc_right_2), offset in (nothing, Offset())
-        test_order_of_accuracy_1d(f, d2f, x1, x2, ns, (bc_left, bc_right), offset)
+        test_order_of_accuracy_1d(f, df, d2f, x1, x2, ns, (bc_left, bc_right), offset)
     end
 end
 
@@ -56,17 +55,18 @@ end
     d2f(x) = ForwardDiff.derivative(df, x)
     ns = 20:20:200
     bc = Periodic()
-    errs = compare_solutions_1d(-pi, pi, ns, f, d2f, (Periodic(), Periodic()))
+    errs = compare_solutions_1d(-pi, pi, ns, f, df, d2f, (Periodic(), Periodic()))
     ooa = order_of_accuracy(ns, errs)
     @test isapprox(ooa, 2.0, atol=0.1)
-    errs = compare_solutions_1d(-pi, pi, ns, f, d2f, (Periodic(), Periodic()), Offset())
+    errs = compare_solutions_1d(-pi, pi, ns, f, df, d2f, (Periodic(), Periodic()), Offset())
     ooa = order_of_accuracy(ns, errs)
     @test isapprox(ooa, 2.0, atol=0.1)
 end
 
 @testset "1D-aperiodic" begin
-    f(x) = sin(2x) / (2 + x)
-    test_order_of_accuracy_1d_all(f, -1, 1, 20:20:200)
+    test_order_of_accuracy_1d_all(x -> sin(2x) / (2 + x), -1, 1, 20:20:200)
+    test_order_of_accuracy_1d_all(x -> exp(-x^3), -0.3, 0.7, 20:20:200)
+    test_order_of_accuracy_1d_all(x -> log(1.2 + cos(x)), -pi, pi, 20:20:200)
 end
 
 @testset "1D-aperiodic-exact" begin
@@ -77,28 +77,23 @@ end
     x2 = 1
     df(x) = ForwardDiff.derivative(f, x)
     d2f(x) = ForwardDiff.derivative(df, x)
-    bc_left_1 = Dirichlet(f(x1))
-    bc_left_2 = Neumann(df(x1))
-    bc_right_1 = Dirichlet(f(x2))
-    bc_right_2 = Neumann(df(x2))
+    bc_left_1 = Dirichlet()
+    bc_left_2 = Neumann()
+    bc_right_1 = Dirichlet()
+    bc_right_2 = Neumann()
     n = 7
     for bc_left in (bc_left_1, bc_left_2), bc_right in (bc_right_1, bc_right_2), offset in (nothing, Offset())
         prob = PoissonProblem(
             (n,);
-            boundaries = (Boundary(bc_left, bc_right),),
+            boundaries = ((bc_left, bc_right),),
             lims = ((x1, x2),),
             grid = (offset,)
         )
-        xs = prob.nodes[1]
-        sol = prob \ d2f.(xs)
-        sol_exact = f.(xs)
-        if is_singular(prob)
-            zeromean!(sol_exact)
-        end
+        err = solution_error_1d(prob, f, df, d2f)
         if !exact_for_quadratic_solutions(prob)
-            @test maximum(abs, sol .- sol_exact) > 1e-3
+            @test err > 1e-3
         else
-            @test maximum(abs, sol .- sol_exact) < 1e-15
+            @test err < 1e-15
         end
     end
 end

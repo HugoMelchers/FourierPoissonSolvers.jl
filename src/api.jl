@@ -4,22 +4,28 @@
 Solves the `PoissonProblem` `prob` (containing boundary conditions, grid sizes, etc.) with the right-hand side `rhs`.
 The dimensions of `rhs` must match `prob.size`.
 """
-function solve(prob::PoissonProblem, rhs)
-    rhs = copy(rhs)
+function solve(prob::PoissonProblem, arr::Array)
+    solve_in_place!(copy(arr), prob)
+end
+
+function solve_in_place!(arr, prob::PoissonProblem)
+    mul!(arr, prob.fwd_plan, arr)
+    arr .*= prob.coefficients
+    mul!(arr, prob.bwd_plan, arr)
+    # If the problem is singular, then setting the coefficient corresponding to the constant term does not ensure
+    # that the resulting `rhs` has zero average value, since for the RODFT00 transform (i.e. double Neumann bc's on
+    # a normal grid) some of the higher frequencies do not sum to zero. So to ensure that the result sums to zero,
+    # we shift the solution manually after doing the inverse transform.
+    is_singular(prob) && zeromean!(arr)
+    arr
+end
+
+function solve(prob::PoissonProblem, right_hand_side::WithBoundaries)
+    arr_copy = copy(right_hand_side.rhs)
     for i in 1:length(prob.size)
-        update_bcs!(rhs, i, prob.step[i], prob.boundaries[i], prob.grid[i])
+        update_bcs!(arr_copy, i, prob.step[i], prob.boundaries[i], right_hand_side.bvs[i], prob.grid[i])
     end
-    mul!(rhs, prob.fwd_plan, rhs)
-    scale_coefficients!(rhs, prob)
-    mul!(rhs, prob.bwd_plan, rhs)
-    if is_singular(prob)
-        # If the problem is singular, then setting the coefficient corresponding to the constant term does not ensure
-        # that the resulting `rhs` has zero average value, since for the RODFT00 transform (i.e. double Neumann bc's on
-        # a normal grid) some of the higher frequencies do not sum to zero. So to ensure that the result sums to zero,
-        # we shift the solution manually after doing the inverse transform.
-        zeromean!(rhs)
-    end
-    rhs
+    solve_in_place!(arr_copy, prob)
 end
 
 """
@@ -47,7 +53,7 @@ If the problem is singular, the solution obtained is equivalent to using the Moo
 """
 function is_singular(prob::PoissonProblem)
     for bc in prob.boundaries
-        if bc.left isa Dirichlet || bc.right isa Dirichlet
+        if bc[1] isa Dirichlet || bc[2] isa Dirichlet
             return false
         end
     end
@@ -69,7 +75,7 @@ function exact_for_quadratic_solutions(prob::PoissonProblem)
     for (bc, grid) in zip(prob.boundaries, prob.grid)
         if bc isa Periodic || grid isa Nothing
             continue
-        elseif bc.left isa Dirichlet || bc.right isa Dirichlet
+        elseif bc[1] isa Dirichlet || bc[2] isa Dirichlet
             return false
         end
     end

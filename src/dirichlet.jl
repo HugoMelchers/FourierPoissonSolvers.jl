@@ -7,14 +7,14 @@ For an axis with Dirichlet boundary conditions on both sides, we use a Discrete 
 fwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
 bwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
 scalingfactor(::Dirichlet, ::Dirichlet, ::Nothing, n) = 2n + 2
-frequencies(::Dirichlet, ::Dirichlet, ::Nothing, n) = LinRange(0, π, n+2)[2:end-1]
+frequencies(::Dirichlet, ::Dirichlet, ::Nothing, n) = frequency_response.(LinRange(0, π, n+2)[2:end-1])
 
-function update_left_boundary!(correction, pitch, bc::Dirichlet, ::Nothing)
-    correction .-= bc.values .* (1 / pitch^2)
+function update_left_boundary!(correction, pitch, ::Dirichlet, values, ::Nothing)
+    correction .-= values .* (1 / pitch^2)
 end
 
-function update_right_boundary!(correction, pitch, bc::Dirichlet, ::Nothing)
-    correction .-= bc.values .* (1 / pitch^2)
+function update_right_boundary!(correction, pitch, ::Dirichlet, values, ::Nothing)
+    correction .-= values .* (1 / pitch^2)
 end
 
 # Dirichlet boundary conditions on an offset grid
@@ -22,7 +22,7 @@ end
 fwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT10
 bwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT01
 scalingfactor(::Dirichlet, ::Dirichlet, ::Offset, n) = 2n
-frequencies(::Dirichlet, ::Dirichlet, ::Offset, n) = LinRange(0, π, n+1)[2:end]
+frequencies(::Dirichlet, ::Dirichlet, ::Offset, n) = frequency_response.(LinRange(0, π, n+1)[2:end])
 
 #=
 Note that the `update_*_boundary!` methods for Dirichlet boundary conditions with offset grids are the only such methods
@@ -50,10 +50,10 @@ simply add such a correction term to the right-hand side as it requires knowing 
 `u`, instead of their sum.
 =#
 
-function update_left_boundary!(correction, pitch, bc::Dirichlet, ::Offset)
-    correction .-= bc.values .* (2 / pitch^2)
+function update_left_boundary!(correction, pitch, ::Dirichlet, values, ::Offset)
+    correction .-= values .* (2 / pitch^2)
 end
 
-function update_right_boundary!(correction, pitch, bc::Dirichlet, ::Offset)
-    correction .-= bc.values .* (2 / pitch^2)
+function update_right_boundary!(correction, pitch, ::Dirichlet, values, ::Offset)
+    correction .-= values .* (2 / pitch^2)
 end

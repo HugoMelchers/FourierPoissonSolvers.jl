@@ -17,4 +17,4 @@ bwd_transform(::Periodic, ::Periodic, _) = DHT
 scalingfactor(::Periodic, ::Periodic, _, n) = n
 
 # TODO: maybe just use the more accurate eigenvalues for periodic boundary conditions
-frequencies(::Periodic, ::Periodic, _, n) = 2pi .* fftfreq(n)
+frequencies(::Periodic, ::Periodic, _, n) = frequency_response.(2pi .* fftfreq(n))

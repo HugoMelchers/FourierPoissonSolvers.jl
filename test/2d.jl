@@ -1,34 +1,51 @@
-@testset "2D-aperiodic" begin
-    f(x, y) = (exp(x + 2y) - exp(-2x - y)) * exp(-x^2 - y^2)
+function solution_error_2d(prob, f, fx, fy, Δf)
+    _bcs = prob.boundaries
+    (xs, ys) = prob.nodes
+    (x1, x2) = prob.lims[1]
+    (y1, y2) = prob.lims[2]
+    ys = ys'
+    vals_x1 = _bcs[1][1] isa Dirichlet ? f.(x1, ys) : fx.(x1, ys)
+    vals_x2 = _bcs[1][2] isa Dirichlet ? f.(x2, ys) : fx.(x2, ys)
+    vals_y1 = _bcs[2][1] isa Dirichlet ? f.(xs, y1) : fy.(xs, y1)
+    vals_y2 = _bcs[2][2] isa Dirichlet ? f.(xs, y2) : fy.(xs, y2)
+    rhs = with_boundaries(Δf.(xs, ys), (vals_x1, vals_x2), (vals_y1, vals_y2))
+    sol_approx = prob \ rhs
+    sol_exact = f.(xs, ys)
+    is_singular(prob) && zeromean!(sol_exact)
+    maximum(abs, sol_exact - sol_approx)
+end
+
+function test_order_of_accuracy_2d(f, x1, x2, y1, y2, ns, bcs, grid)
     fx(x, y) = ForwardDiff.derivative(x′ -> f(x′, y), x)
     fy(x, y) = ForwardDiff.derivative(y′ -> f(x, y′), y)
     fxx(x, y) = ForwardDiff.derivative(x′ -> fx(x′, y), x)
     fyy(x, y) = ForwardDiff.derivative(y′ -> fy(x, y′), y)
-    ns = 20:20:200
-
-    @test begin
-        errs = Float64[]
-        for n in ns
-            xs = LinRange(-1, 1, 2n+1)[2:2:end]
-            rhs = fxx.(xs, xs') .+ fyy.(xs, xs')
-            bc1x = Neumann(fx.([-1], xs'))
-            bc2x = Neumann(fx.([ 1], xs'))
-            bc1y = Neumann(fy.(xs, [-1]'))
-            bc2y = Neumann(fy.(xs, [ 1]'))
-            prob = PoissonProblem(
-                (n,n);
-                boundaries = (Boundary(bc1x, bc2x), Boundary(bc1y, bc2y)),
-                lims = ((-1.0,1.0),(-1.0,1.0)),
-                grid = (Offset(), Offset())
-            )
-            u1 = f.(xs, xs')
-            zeromean!(u1)
-            u2 = prob \ rhs
-            err = maximum(abs, u1 - u2)
-            push!(errs, err)
-        end
-        isapprox(order_of_accuracy(ns, errs), 2.0, atol=0.1)
+    Δf(x, y) = fxx(x, y) + fyy(x, y)
+    errs = Float64[]
+    for n in ns
+        prob = PoissonProblem(
+            (n, n);
+            boundaries=bcs,
+            lims=((x1, x2), (y1, y2)),
+            grid
+        )
+        err = solution_error_2d(prob, f, fx, fy, Δf)
+        push!(errs, err)
     end
+    @test isapprox(order_of_accuracy(ns, errs), 2.0, atol=0.1)
+end
+
+function test_order_of_accuracy_2d_all(f, x1, x2, y1, y2, ns)
+    bcs = (Dirichlet(), Neumann())
+    grids = (nothing, Offset())
+    for (bcx1, bcx2, bcy1, bcy2, xgrid, ygrid) in Iterators.product(bcs, bcs, bcs, bcs, grids, grids)
+        test_order_of_accuracy_2d(f, x1, x2, y1, y2, ns, ((bcx1, bcx2), (bcy1, bcy2)), (xgrid, ygrid))
+    end
+end
+
+@testset "2D-aperiodic" begin
+    f(x, y) = (exp(x + 2y) - exp(-2x - y)) * exp(-x^2 - y^2)
+    test_order_of_accuracy_2d_all(f, -1, 1, -1, 1, 20:20:200)
 end
 
 @testset "2D-aperiodic-exact" begin
@@ -37,49 +54,33 @@ end
     fy(x, y) = ForwardDiff.derivative(y′ -> f(x, y′), y)
     fxx(x, y) = ForwardDiff.derivative(x′ -> fx(x′, y), x)
     fyy(x, y) = ForwardDiff.derivative(y′ -> fy(x, y′), y)
+    Δf(x, y) = fxx(x, y) + fyy(x, y)
     nx = 7
     ny = 11
     x1 = -1
     x2 =  1
     y1 = -1
     y2 =  1
-    bc_x1_d = Dirichlet(zeros(1, ny))
-    bc_x2_d = Dirichlet(zeros(1, ny))
-    bc_y1_d = Dirichlet(zeros(nx, 1))
-    bc_y2_d = Dirichlet(zeros(nx, 1))
-    bc_x1_n = Neumann(zeros(1, ny))
-    bc_x2_n = Neumann(zeros(1, ny))
-    bc_y1_n = Neumann(zeros(nx, 1))
-    bc_y2_n = Neumann(zeros(nx, 1))
+    bcs = (Dirichlet(), Neumann())
     for (bc_x1, bc_x2, bc_y1, bc_y2, offset_x, offset_y) in Iterators.product(
-        (bc_x1_d, bc_x1_n), (bc_x2_d, bc_x2_n),
-        (bc_y1_d, bc_y1_n), (bc_y2_d, bc_y2_n),
+        bcs, bcs,
+        bcs, bcs,
         (nothing, Offset()),
         (nothing, Offset()),
     )
-        bcs_x = Boundary(bc_x1, bc_x2)
-        bcs_y = Boundary(bc_y1, bc_y2)
+        bcs_x = (bc_x1, bc_x2)
+        bcs_y = (bc_y1, bc_y2)
         prob = PoissonProblem(
-            (nx,ny);
+            (nx, ny);
             boundaries = (bcs_x, bcs_y),
             grid = (offset_x, offset_y),
-            lims = ((x1, x2),(y1,y2))
+            lims = ((x1, x2), (y1, y2))
         )
-        xs = prob.nodes[1]
-        ys = prob.nodes[2]'
-        prob.boundaries[1].left.values .= bc_x1 isa Dirichlet ? f.(x1, ys) : fx.(x1, ys)
-        prob.boundaries[1].right.values .= bc_x2 isa Dirichlet ? f.(x2, ys) : fx.(x2, ys)
-        prob.boundaries[2].left.values .= bc_y1 isa Dirichlet ? f.(xs, y1) : fy.(xs, y1)
-        prob.boundaries[2].right.values .= bc_y2 isa Dirichlet ? f.(xs, y2) : fy.(xs, y2)
-        sol_approx = prob \ (fxx.(xs, ys) .+ fyy.(xs, ys))
-        sol_exact = f.(xs, ys)
-        if is_singular(prob)
-            zeromean!(sol_exact)
-        end
+        err = solution_error_2d(prob, f, fx, fy, Δf)
         if !exact_for_quadratic_solutions(prob)
-            @test maximum(abs, sol_approx .- sol_exact) > 1e-3
+            @test err > 1e-3
         else
-            @test maximum(abs, sol_approx .- sol_exact) < 1e-13
+            @test err < 1e-13
         end
     end
 end
