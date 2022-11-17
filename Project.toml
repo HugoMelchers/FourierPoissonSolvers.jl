@@ -1,4 +1,4 @@
-name = "SpectralPoissonSolvers"
+name = "FourierPoissonSolvers"
 uuid = "3b250847-5a16-44c9-b45e-a713cb7d6856"
 authors = ["Hugo Melchers <hugomelchers@outlook.com> and contributors"]
 version = "0.1.0"

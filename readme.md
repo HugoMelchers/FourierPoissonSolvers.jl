@@ -1,4 +1,4 @@
-# Spectral Poisson solvers
+# Fourier Poisson solvers
 
 Methods to solve the Poisson equation up to second-order accuracy. These work using the Fourier-like transforms from
 FFTW.jl, meaning they run in `N log N` time for a problem consisting of `N` data.

@@ -1,12 +1,12 @@
-using SpectralPoissonSolvers
+using FourierPoissonSolvers
 using Test
 using ForwardDiff
 
-using SpectralPoissonSolvers:zeromean!
+using FourierPoissonSolvers:zeromean!
 
 include("utils.jl")
 
-@testset "SpectralPoissonSolvers.jl" begin
+@testset "FourierPoissonSolvers.jl" begin
     include("1d.jl")
     include("2d.jl")
 end

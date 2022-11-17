@@ -1,4 +1,4 @@
-module SpectralPoissonSolvers
+module FourierPoissonSolvers
 
 import FFTW: r2rFFTWPlan, plan_r2r!, fftfreq, DHT, REDFT00, REDFT01, REDFT10, REDFT11, RODFT00, RODFT01, RODFT10, RODFT11
 import Base:\
