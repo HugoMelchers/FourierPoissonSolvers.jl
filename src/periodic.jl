@@ -1,3 +1,5 @@
+struct Periodic end
+
 #=
 For an axis with periodic boundary conditions, it is normal to use a Fast Fourier Transform (FFT). However, this
 transform has the disadvantage that the resulting values are complex, even under the assumption that the input data

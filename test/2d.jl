@@ -1,6 +1,6 @@
 function solution_error_2d(prob, f, fx, fy, Δf)
     _bcs = prob.boundaries
-    (xs, ys) = prob.nodes
+    (xs, ys) = nodes(prob)
     (x1, x2) = prob.lims[1]
     (y1, y2) = prob.lims[2]
     ys = ys'

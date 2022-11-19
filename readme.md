@@ -44,8 +44,6 @@ and grid type, of which there are 9 combinations:
   - It should be possible to use the 2nd order accurate methods to create 4th-order iterative methods by matrix splitting
 - Compare performance to multi-grid methods
 - Organise
-  - Project isn't huge, but still good to split up into different files, with lots of documentation
-  - Use multiple dispatch to handle the different boundary conditions and axis types more easily
 - Polish
   - Implement `display` and `show` for `PoissonProblem` to just give an overview instead of printing everything including coefficients and FFTW plans
   - Add rigorous checks in constructors so that as many errors as possible (regarding array dimensions etc.) are caught immediately
@@ -53,8 +51,4 @@ and grid type, of which there are 9 combinations:
   - Maybe don't artificially limit the periodic boundary condition case to 2nd order accuracy
     - Doing this would require more specific under-relaxation parameter choices in the fourth-order algorithms, though
 - Make public, perhaps publish on JuliaHub?
-  - Requires a better name, since these methods do not have spectral accuracy
-    - `PoissonSolvers.jl` is already taken, with `O(N log N)` methods but only for periodic boundary conditions
-    - Something like `PoissonEquations.jl`, `NlogNPoissonSolvers.jl`?
-    - I think `FourierPoissonSolvers.jl` is the way to go. Not too general, arguably a bit too specific but leaves room for a multigrid package that works faster
   - Would definitely require adding proper documentation

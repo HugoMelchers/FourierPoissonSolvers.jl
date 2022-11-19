@@ -1,6 +1,6 @@
 function solution_error_1d(prob, f, df, d2f)
     _bcs = prob.boundaries
-    (xs,) = prob.nodes
+    (xs,) = nodes(prob)
     (x1, x2) = prob.lims[1]
     vals_x1 = _bcs[1][1] isa Dirichlet ? f(x1) : df(x1)
     vals_x2 = _bcs[1][2] isa Dirichlet ? f(x2) : df(x2)

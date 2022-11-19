@@ -23,7 +23,7 @@ end
 function solve(prob::PoissonProblem, right_hand_side::WithBoundaries)
     arr_copy = copy(right_hand_side.rhs)
     for i in 1:length(prob.size)
-        update_bcs!(arr_copy, i, prob.step[i], prob.boundaries[i], right_hand_side.bvs[i], prob.grid[i])
+        add_boundary_terms!(arr_copy, i, prob.step[i], prob.boundaries[i], right_hand_side.bvs[i], prob.grid[i])
     end
     solve_in_place!(arr_copy, prob)
 end
@@ -92,4 +92,17 @@ shifted first.
 """
 function zeromean!(arr)
     arr .-= sum(arr) / length(arr)
+end
+
+"""
+    nodes(prob::PoissonProblem)
+
+Create a tuple of `range`s, corresponding to the grid points at which the solution is obtained.
+"""
+function nodes(prob::PoissonProblem)
+    left_boundaries = getindex.(prob.boundaries, 1)
+    right_boundaries = getindex.(prob.boundaries, 2)
+    left_lims = getindex.(prob.lims, 1)
+    right_lims = getindex.(prob.lims, 2)
+    _nodes.(left_boundaries, right_boundaries, prob.grid, prob.size, left_lims, right_lims)
 end
