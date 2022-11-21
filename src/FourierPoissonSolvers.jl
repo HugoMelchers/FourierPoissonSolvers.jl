@@ -8,6 +8,7 @@ import LinearAlgebra:mul!
 struct Offset end
 
 frequency_response(ω) = -2 + 2cos(ω)
+frequency_response4(ω) = (-30 + 32cos(ω) - 2cos(2ω)) / 12
 
 include("periodic.jl")
 include("dirichlet.jl")
@@ -17,6 +18,8 @@ include("rhs.jl")
 include("poissonproblem.jl")
 include("api.jl")
 
-export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, is_singular, exact_for_quadratic_solutions, with_boundaries, nodes
+include("fourth_order.jl")
+
+export Periodic, Dirichlet, Neumann, Offset, PoissonProblem, solve, is_singular, exact_for_quadratic_solutions, with_boundaries, nodes, FourthOrder
 
 end

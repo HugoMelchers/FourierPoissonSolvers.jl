@@ -12,7 +12,9 @@ fwd_transform(::Dirichlet, ::Neumann, ::Offset) = RODFT11
 bwd_transform(::Dirichlet, ::Neumann, ::Offset) = RODFT11
 
 scalingfactor(::Dirichlet, ::Neumann, ::Union{Nothing, Offset}, n) = 2n
-frequencies(::Dirichlet, ::Neumann, ::Union{Nothing, Offset}, n) = frequency_response.(LinRange(0, π, 2n+1)[2:2:end])
+wavenumbers(::Dirichlet, ::Neumann, ::Union{Nothing, Offset}, n) = LinRange(0, π, 2n+1)[2:2:end]
+eigenvalues(::Dirichlet, ::Neumann, ::Union{Nothing, Offset}, n) = frequency_response.(LinRange(0, π, 2n+1)[2:2:end])
+eigenvalues4(::Dirichlet, ::Neumann, ::Union{Nothing, Offset}, n) = frequency_response4.(LinRange(0, π, 2n+1)[2:2:end])
 
 
 
@@ -23,4 +25,6 @@ fwd_transform(::Neumann, ::Dirichlet, ::Offset) = REDFT11
 bwd_transform(::Neumann, ::Dirichlet, ::Offset) = REDFT11
 
 scalingfactor(::Neumann, ::Dirichlet, ::Union{Nothing, Offset}, n) = 2n
-frequencies(::Neumann, ::Dirichlet, ::Union{Nothing, Offset}, n) = frequency_response.(LinRange(0, π, 2n+1)[2:2:end])
+wavenumbers(::Neumann, ::Dirichlet, ::Union{Nothing, Offset}, n) = LinRange(0, π, 2n+1)[2:2:end]
+eigenvalues(::Neumann, ::Dirichlet, ::Union{Nothing, Offset}, n) = frequency_response.(LinRange(0, π, 2n+1)[2:2:end])
+eigenvalues4(::Neumann, ::Dirichlet, ::Union{Nothing, Offset}, n) = frequency_response4.(LinRange(0, π, 2n+1)[2:2:end])

@@ -8,7 +8,9 @@ For an axis with Dirichlet boundary conditions on both sides, we use a Discrete 
 fwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
 bwd_transform(::Dirichlet, ::Dirichlet, ::Nothing) = RODFT00
 scalingfactor(::Dirichlet, ::Dirichlet, ::Nothing, n) = 2n + 2
-frequencies(::Dirichlet, ::Dirichlet, ::Nothing, n) = frequency_response.(LinRange(0, π, n+2)[2:end-1])
+wavenumbers(::Dirichlet, ::Dirichlet, ::Nothing, n) = LinRange(0, π, n+2)[2:end-1]
+eigenvalues(::Dirichlet, ::Dirichlet, ::Nothing, n) = frequency_response.(LinRange(0, π, n+2)[2:end-1])
+eigenvalues4(::Dirichlet, ::Dirichlet, ::Nothing, n) = frequency_response4.(LinRange(0, π, n+2)[2:end-1])
 
 function add_boundary_term!(correction, pitch, ::Dirichlet, values, ::Nothing, _is_right)
     correction .-= values .* (1 / pitch^2)
@@ -19,7 +21,9 @@ end
 fwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT10
 bwd_transform(::Dirichlet, ::Dirichlet, ::Offset) = RODFT01
 scalingfactor(::Dirichlet, ::Dirichlet, ::Offset, n) = 2n
-frequencies(::Dirichlet, ::Dirichlet, ::Offset, n) = frequency_response.(LinRange(0, π, n+1)[2:end])
+wavenumbers(::Dirichlet, ::Dirichlet, ::Offset, n) = LinRange(0, π, n+1)[2:end]
+eigenvalues(::Dirichlet, ::Dirichlet, ::Offset, n) = frequency_response.(LinRange(0, π, n+1)[2:end])
+eigenvalues4(::Dirichlet, ::Dirichlet, ::Offset, n) = frequency_response4.(LinRange(0, π, n+1)[2:end])
 
 #=
 Note that a Poisson problem with Dirichlet boundary conditions on an offset grid is the only case in which the solution
