@@ -68,6 +68,24 @@ end
 promote_grid(ndims::Val{N}, grid::Union{Nothing,Offset}) where {N} = ntuple(_ -> grid, ndims)
 promote_grid(::Val{N}, grid::NTuple{N,Union{Nothing,Offset}}) where {N} = grid
 
+floattype(::Type{Float32}) = Float32
+floattype(::Type{Float64}) = Float64
+floattype(::Type{<:Real}) = Nothing
+
+widestfloat(::Type{Float32}, ::Type{Float32}) = Float32
+widestfloat(::Type{Float32}, ::Type{Float64}) = Float64
+widestfloat(::Type{Float64}, ::Type{Float32}) = Float64
+widestfloat(::Type{Float64}, ::Type{Float64}) = Float64
+widestfloat(::Type{Nothing}, ::Type{Float32}) = Float32
+widestfloat(::Type{Nothing}, ::Type{Float64}) = Float64
+widestfloat(::Type{Float32}, ::Type{Nothing}) = Float32
+widestfloat(::Type{Float64}, ::Type{Nothing}) = Float64
+widestfloat(::Type{Nothing}, ::Type{Nothing}) = Nothing
+
+
+gettype(lims::Tuple{<:Real, <:Real}) = widestfloat(floattype(typeof(lims[1])), floattype(typeof(lims[2])))
+gettype(lims) = reduce(widestfloat, gettype.(lims))
+
 """
     PoissonProblem(size::NTuple{N,Int}; boundaries, lims, grid=nothing) where {N}
 
@@ -99,20 +117,27 @@ Keyword arguments:
   - `grid=Offset()` sets the grid to offset along each dimension
   - `grid=(g1, g2, ..., gN)` sets the grid to normal or offset along each dimension separately
 """
-function PoissonProblem(size::NTuple{N,Int}; boundaries, lims, grid=nothing) where {N}
-    # 'promote' grid kind and boundary condition types so that these arguments don't have to be repeated if they are
-    # identical for all axes
-    T = Float64 # TODO determine from input
+function PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing) where {N}
+    _T = if T !== nothing
+        T
+    else
+        T_inferred = gettype(lims)
+        if T_inferred !== Nothing
+            T_inferred
+        else
+            Float64
+        end
+    end
     _grid = promote_grid(Val(N), grid)
     _boundaries = promote_boundary_conditions(Val(N), boundaries)
-    _lims = promote_lims(T, Val(N), lims)
+    _lims = promote_lims(_T, Val(N), lims)
     left_boundaries = getindex.(_boundaries, 1)
     right_boundaries = getindex.(_boundaries, 2)
     left_lims = getindex.(_lims, 1)
     right_lims = getindex.(_lims, 2)
     _step = step.(left_boundaries, right_boundaries, _grid, size, left_lims, right_lims)
     coefficients = eigenvalues.(left_boundaries, right_boundaries, _grid, size) ./ _step .^ 2
-    _coefficients = zeros(T, size...)
+    _coefficients = zeros(_T, size...)
     transforms_fwd = fwd_transform.(left_boundaries, right_boundaries, _grid)
     transforms_bwd = bwd_transform.(left_boundaries, right_boundaries, _grid)
     fwd_plan = plan_r2r!(_coefficients, transforms_fwd)

@@ -18,18 +18,27 @@ struct FourthOrder{T,N,BCS,G,Plan1,Plan2}
     bwd_plan::r2rFFTWPlan{T,Plan2,true,N,UnitRange{Int}}
 end
 
-function FourthOrder(size::NTuple{N,Int}; boundaries, lims, grid=nothing) where {N}
-    T = Float64 # TODO determine from input
+function FourthOrder(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing) where {N}
+    _T = if T !== nothing
+        T
+    else
+        T_inferred = gettype(lims)
+        if T_inferred !== Nothing
+            T_inferred
+        else
+            Float64
+        end
+    end
     _grid = promote_grid(Val(N), grid)
     _boundaries = promote_boundary_conditions(Val(N), boundaries)
-    _lims = promote_lims(T, Val(N), lims)
+    _lims = promote_lims(_T, Val(N), lims)
     left_boundaries = getindex.(_boundaries, 1)
     right_boundaries = getindex.(_boundaries, 2)
     left_lims = getindex.(_lims, 1)
     right_lims = getindex.(_lims, 2)
     _step = step.(left_boundaries, right_boundaries, _grid, size, left_lims, right_lims)
     coefficients = eigenvalues4.(left_boundaries, right_boundaries, _grid, size) ./ _step .^ 2
-    _coefficients = zeros(T, size...)
+    _coefficients = zeros(_T, size...)
     transforms_fwd = fwd_transform.(left_boundaries, right_boundaries, _grid)
     transforms_bwd = bwd_transform.(left_boundaries, right_boundaries, _grid)
     fwd_plan = plan_r2r!(_coefficients, transforms_fwd)
@@ -55,8 +64,8 @@ function add_correction!(b, prob::FourthOrder, x)
         x_rev = view(x, c1..., sz:-1:1, c2...)
         h = prob.step[i]
         g = prob.grid[i]
-        mul_boundary!(b, x, c1, c2, h, bc_l, g, false)
-        mul_boundary!(b_rev, x_rev, c1, c2, h, bc_r, g, true)
+        correction!(b, x, c1, c2, h, bc_l, g)
+        correction!(b_rev, x_rev, c1, c2, h, bc_r, g)
     end
 end
 
@@ -162,55 +171,22 @@ function add_boundary_term_4th_order!(b, values, c1, c2, h, ::Neumann, ::Offset,
     @. b[c1..., 2:2, c2...] -= r2 * values
 end
 
-function mul_boundary!(b, a, c1, c2, h, ::Dirichlet, ::Nothing, _is_right)
-    @. b[c1..., 1:1, c2...] -= ((7//6) * a[c1..., 1:1, c2...] +
-        (-5//3) * a[c1..., 2:2, c2...] +
-        (5//4) * a[c1..., 3:3, c2...] +
-        (-1//2) * a[c1..., 4:4, c2...] +
-        (1//12) * a[c1..., 5:5, c2...]) / h^2
+function correction!(b, a, c1, c2, h, bc, grid)
+    (coeffs1, coeffs2) = correction_coefficients(bc, grid)
+    for i in 1:5
+        @. b[c1..., 1:1, c2...] -= (coeffs1[i] / h^2) * @view a[c1..., i:i, c2...]
+    end
+    if coeffs2 === nothing
+        return
+    end
+    for i in 1:5
+        @. b[c1..., 2:2, c2...] -= (coeffs2[i] / h^2) * @view a[c1..., i:i, c2...]
+    end
 end
-
-function mul_boundary!(b, a, c1, c2, h, ::Dirichlet, ::Offset, _is_right)
-    @. b[c1..., 1:1, c2...] -= ((-19//12) * a[c1..., 1:1, c2...] +
-        (37//36) * a[c1..., 2:2, c2...] +
-        (-5//12) * a[c1..., 3:3, c2...] +
-        (2//21) * a[c1..., 4:4, c2...] +
-        (-1/108) * a[c1..., 5:5, c2...]) / h^2
-
-    @. b[c1..., 2:2, c2...] -= ((1//3) * a[c1..., 1:1, c2...] +
-        (-5//18) * a[c1..., 2:2, c2...] +
-        (1//6) * a[c1..., 3:3, c2...] +
-        (-5//84) * a[c1..., 4:4, c2...] +
-        (1//108) * a[c1..., 5:5, c2...]) / h^2
-end
-
-function mul_boundary!(b, a, c1, c2, h, ::Neumann, ::Nothing, is_right)
-    @. b[c1..., 1:1, c2...] -= ((-235//72) * a[c1..., 1:1, c2...] +
-        (16//3) * a[c1..., 2:2, c2...] +
-        (-17//6) * a[c1..., 3:3, c2...] +
-        (8//9) * a[c1..., 4:4, c2...] +
-        (-1//8) * a[c1..., 5:5, c2...]) / h^2
-
-    @. b[c1..., 2:2, c2...] -= ((65/144) * a[c1..., 1:1, c2...] +
-        (-3//4) * a[c1..., 2:2, c2...] +
-        (5//12) * a[c1..., 3:3, c2...] +
-        (-5//36) * a[c1..., 4:4, c2...] +
-        (1//48) * a[c1..., 5:5, c2...]) / h^2
-end
-
-function mul_boundary!(b, a, c1, c2, h, ::Neumann, ::Offset, is_right)
-    @. b[c1..., 1:1, c2...] -= ((929//2252) * a[c1..., 1:1, c2...] +
-        (-17791//20268) * a[c1..., 2:2, c2...] +
-        (4745//6756) * a[c1..., 3:3, c2...] +
-        (-482//1689) * a[c1..., 4:4, c2...] +
-        (979//20268) * a[c1..., 5:5, c2...]) / h^2
-
-    @. b[c1..., 2:2, c2...] -= ((19//563) * a[c1..., 1:1, c2...] +
-        (-715//10134) * a[c1..., 2:2, c2...] +
-        (185//3378) * a[c1..., 3:3, c2...] +
-        (-145//6756) * a[c1..., 4:4, c2...] +
-        (71//20268) * a[c1..., 5:5, c2...]) / h^2
-end
+correction_coefficients(::Dirichlet, ::Nothing) = ((7//6, -5//3, 5//4, -1//2, 1//12), nothing)
+correction_coefficients(::Dirichlet, ::Offset) = ((-19//12, 37//36, -5//12, 2//21, -1/108), (1//3, -5//18, 1//6, -5//84, 1//108))
+correction_coefficients(::Neumann, ::Nothing) = ((-235//72, 16//3, -17//6, 8//9, -1//8), (65//144, -3//4, 5//12, -5//36, 1//48))
+correction_coefficients(::Neumann, ::Offset) = ((929//2252, -17791//20268, 4745//6756, -482//1689, 979//20268), (19//563, -715//10134, 185//3378, -145//6756, 71//20268))
 
 function is_singular(prob::FourthOrder)
     for bc in prob.boundaries
@@ -219,4 +195,11 @@ function is_singular(prob::FourthOrder)
         end
     end
     true
+end
+function nodes(prob::FourthOrder)
+    left_boundaries = getindex.(prob.boundaries, 1)
+    right_boundaries = getindex.(prob.boundaries, 2)
+    left_lims = getindex.(prob.lims, 1)
+    right_lims = getindex.(prob.lims, 2)
+    _nodes.(left_boundaries, right_boundaries, prob.grid, prob.size, left_lims, right_lims)
 end
