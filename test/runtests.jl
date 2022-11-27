@@ -9,4 +9,5 @@ include("utils.jl")
 @testset "FourierPoissonSolvers.jl" begin
     include("1d.jl")
     include("2d.jl")
+    include("1d-fourth-order.jl")
 end

@@ -14,8 +14,8 @@ Promotion of boundary values along a single axis:
 - A tuple is treated as-is, i.e. (left values, right values)
 =#
 promote_boundary_value(T1, ::Nothing) = (nothing, nothing)
-promote_boundary_value(T1, t::T) where {T <: Real} = (T1(t), T1(t))
-promote_boundary_value(T1, t::Array{T,N}) where {T <: Real, N} = (T1.(t), T1.(t))
+promote_boundary_value(T1, t::T) where {T<:Real} = (T1(t), T1(t))
+promote_boundary_value(T1, t::Array{T,N}) where {T<:Real,N} = (T1.(t), T1.(t))
 promote_boundary_value(T1, tup::NTuple{2,Union{Real,AbstractArray{<:Real}}}) = (T1.(tup[1]), T1.(tup[2]))
 
 #=
@@ -24,7 +24,7 @@ Promotion of the tuple of boundary values
 - It can also be a single entry, in which case it's repeated
 =#
 promote_boundary_values(T, ::Val{N}, bcs::NTuple{N,Any}) where {N} = promote_boundary_value.(T, bcs)
-promote_boundary_values(T1, ndims::Val{N}, v::Tuple{TUP}) where {T,N,M,TUP <: Union{Nothing, T, Array{T,M}}} = begin
+promote_boundary_values(T1, ndims::Val{N}, v::Tuple{TUP}) where {T,N,M,TUP<:Union{Nothing,T,Array{T,M}}} = begin
     _v = promote_boundary_value(T1, v[1])
     ntuple(_ -> _v, ndims)
 end

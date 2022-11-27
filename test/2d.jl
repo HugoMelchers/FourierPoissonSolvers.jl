@@ -3,14 +3,13 @@ function solution_error_2d(prob, f, fx, fy, Δf)
     (xs, ys) = nodes(prob)
     (x1, x2) = prob.lims[1]
     (y1, y2) = prob.lims[2]
-    ys = ys'
     vals_x1 = _bcs[1][1] isa Dirichlet ? f.(x1, ys) : fx.(x1, ys)
     vals_x2 = _bcs[1][2] isa Dirichlet ? f.(x2, ys) : fx.(x2, ys)
     vals_y1 = _bcs[2][1] isa Dirichlet ? f.(xs, y1) : fy.(xs, y1)
     vals_y2 = _bcs[2][2] isa Dirichlet ? f.(xs, y2) : fy.(xs, y2)
-    rhs = with_boundaries(Δf.(xs, ys), (vals_x1, vals_x2), (vals_y1, vals_y2))
+    rhs = with_boundaries(Δf.(xs, ys'), (vals_x1, vals_x2), (vals_y1, vals_y2))
     sol_approx = prob \ rhs
-    sol_exact = f.(xs, ys)
+    sol_exact = f.(xs, ys')
     is_singular(prob) && zeromean!(sol_exact)
     maximum(abs, sol_exact - sol_approx)
 end
