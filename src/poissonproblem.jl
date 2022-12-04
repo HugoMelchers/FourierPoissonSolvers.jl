@@ -129,18 +129,21 @@ struct PoissonProblem{T,N,Order,BCS,G,Plan1,Plan2,R}
 end
 
 """
-    PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing, order=Val(2)) where {N}
+    PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing, order=Val(2), fftw_flags=FFTW_ESTIMATE, fftw_timelimit=Inf) where {N}
 
 Creates a `PoissonProblem` over `N` dimensions with element type `T` (either `Float32` or `Float64`), where the number
 of grid points along the `k`-th axis is `size[k]`. Keyword arguments:
 
 - `boundaries`: the types of boundary conditions of the problem. Can be specified in the following ways:
   - `boundaries=bc`, with `bc` one of `Periodic()`, `Dirichlet()`, or `Neumann()` sets the boundary condition to that
-    type for all `N` dimensions, and for both sides in that dimension
+    type for all `N` dimensions, and for both sides in each dimension
+  - `boundaries=((bc_left, bc_right),)` sets all left boundary conditions to `bc_left` and all right boundary conditions
+    to `bc_right`
   - `boundaries=(bc1, bc2, ..., bcN)` sets the boundary condition to `bc1` on both sides for the first dimension, `bc2`
     on both sides for the second dimension, and so on
-  - `boundaries=((bc1left, bc1right), (bc2left, bc2right), ...)` allow setting boundary conditions individually for the
-    left and right boundaries for each dimension
+  - `boundaries=((bc1left, bc1right), (bc2left, bc2right), ...)` sets the boundary conditions individually for the left
+    and right boundaries for each dimension
+
   The last two of these ways can be mixed and matched. For example, `boundaries=(Periodic(), (Dirichlet(),
   Neumann()))` for a 2-dimensional problem where the first dimension has periodic boundary conditions and the second
   dimension has Dirichlet boundary conditions on one side and Neumann on the other. Note that `Periodic` boundary
@@ -163,8 +166,13 @@ of grid points along the `k`-th axis is `size[k]`. Keyword arguments:
   fourth-order accuracy. Note that while the second-order accurate methods are direct, the fourth-order methods are
   iterative and may require several dozen iterations, in which case they are also several dozen times slower than
   a second-order problem of the same size. As such, using second-order methods is recommended.
+
+- `fftw_flags` and `fftw_timelimit` allow specifying keyword arguments to `FFTW.plan_r2r!`, which finds efficient
+  plans for the transforms that are used. For possible values for these arguments, see the `AbstractFFTs` documentation
+  <https://juliamath.github.io/AbstractFFTs.jl/stable/api/#AbstractFFTs.plan_fft>. The `FFTW.{PATIENT, MEAUSRE, ...}`
+  symbols are re-exported as `FFTW_PATIENT`, `FFTW_MEASURE`, and so on.
 """
-function PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing, order=Val(2)) where {N}
+function PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=nothing, order=Val(2), fftw_flags=FFTW_ESTIMATE, fftw_timelimit=Inf) where {N}
     _T = if T !== nothing
         T
     else
@@ -191,8 +199,8 @@ function PoissonProblem(size::NTuple{N,Int}, T=nothing; boundaries, lims, grid=n
     _coefficients = zeros(_T, size...)
     transforms_fwd = fwd_transform.(left_boundaries, right_boundaries, _grid)
     transforms_bwd = bwd_transform.(left_boundaries, right_boundaries, _grid)
-    fwd_plan = plan_r2r!(_coefficients, transforms_fwd)
-    bwd_plan = plan_r2r!(_coefficients, transforms_bwd)
+    fwd_plan = plan_r2r!(_coefficients, transforms_fwd; flags=fftw_flags, timelimit=fftw_timelimit)
+    bwd_plan = plan_r2r!(_coefficients, transforms_bwd; flags=fftw_flags, timelimit=fftw_timelimit)
     for i in 1:length(size)
         _coefficients .+= reshape(coefficients[i], ntuple(_ -> 1, i - 1)..., :)
     end
